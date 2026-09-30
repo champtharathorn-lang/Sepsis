@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบบันทึกและติดตามตัวชี้วัด Sepsis | รพ.เมตตาประชารักษ์ (วัดไร่ขิง)</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- FontAwesome 6 CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col text-slate-800">
+
+  <!-- Header -->
+  <header class="bg-teal-800 text-white shadow-md sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-3 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-teal-800 text-xl font-bold shadow">
+          <i class="fa-solid fa-heart-pulse"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg sm:text-xl font-bold tracking-tight">Metta Sepsis Quality Registry</h1>
+            <span class="text-xs bg-teal-600 px-2 py-0.5 rounded text-teal-100 font-mono">F/M-MED/002-XX</span>
+          </div>
+          <p class="text-xs text-teal-200">แบบฟอร์มเก็บข้อมูลและตัวชี้วัด Severe Sepsis / Septic Shock • รพ.เมตตาประชารักษ์ (วัดไร่ขิง)</p>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="flex space-x-1 bg-teal-900/60 p-1 rounded-xl text-sm font-medium">
+        <button id="navDashboard" onclick="SepsisApp.switchTab('dashboard')" class="px-3.5 py-1.5 rounded-lg bg-teal-700 text-white shadow-sm transition flex items-center gap-1.5">
+          <i class="fa-solid fa-chart-line text-xs"></i> <span>แดชบอร์ด & ตัวชี้วัด</span>
+        </button>
+        <button id="navForm" onclick="SepsisApp.switchTab('form')" class="px-3.5 py-1.5 rounded-lg text-teal-100 hover:bg-teal-600 transition flex items-center gap-1.5">
+          <i class="fa-solid fa-file-medical text-xs"></i> <span>บันทึกข้อมูลเคสใหม่</span>
+        </button>
+        <button id="navRegistry" onclick="SepsisApp.switchTab('registry')" class="px-3.5 py-1.5 rounded-lg text-teal-100 hover:bg-teal-600 transition flex items-center gap-1.5">
+          <i class="fa-solid fa-table-list text-xs"></i> <span>ทะเบียนผู้ป่วย</span>
+        </button>
+        <button id="navSettings" onclick="SepsisApp.switchTab('settings')" class="px-3 py-1.5 rounded-lg text-teal-100 hover:bg-teal-600 transition flex items-center gap-1.5">
+          <i class="fa-solid fa-gear text-xs"></i> <span>ตั้งค่า / Google Sheets</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Google Sheet Sync Status Bar -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-3 w-full no-print">
+    <div id="sheetSyncNotice"></div>
+  </div>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex-1 w-full">
+
+    <!-- ========================================== -->
+    <!-- TAB 1: DASHBOARD & TRENDS (สำหรับคนมาตรวจ / ดูภาพรวม) -->
+    <!-- ========================================== -->
+    <section id="dashboardTab" class="space-y-6">
+      <!-- Filter Bar -->
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-teal-600"></i>
+          <span class="font-semibold text-slate-700 text-sm">ตัวกรองข้อมูล (Audit Filters):</span>
+        </div>
+        
+        <div class="flex flex-wrap items-center gap-3 text-sm">
+          <div>
+            <label class="text-xs text-slate-500 block mb-0.5">ช่วงเวลา (Period)</label>
+            <select id="filterDateRange" class="border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500">
+              <option value="all">ทั้งหมด (All Time)</option>
+              <option value="thisMonth">เดือนนี้ (Current Month)</option>
+              <option value="last3Months">3 เดือนล่าสุด (Last 3 Months)</option>
+              <option value="year2567" selected>ปีงบประมาณ 2567</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="text-xs text-slate-500 block mb-0.5">หอผู้ป่วย (Ward)</label>
+            <select id="filterWard" class="border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500">
+              <option value="all">ทุกหอผู้ป่วย (All Wards)</option>
+              <option value="หอผู้ป่วยอายุรกรรมชาย">หอผู้ป่วยอายุรกรรมชาย</option>
+              <option value="หอผู้ป่วยอายุรกรรมหญิง">หอผู้ป่วยอายุรกรรมหญิง</option>
+              <option value="หอผู้ป่วยศัลยกรรม">หอผู้ป่วยศัลยกรรม</option>
+              <option value="หอผู้ป่วยจักษุ 1">หอผู้ป่วยจักษุ 1</option>
+              <option value="หอผู้ป่วยจักษุ 2">หอผู้ป่วยจักษุ 2</option>
+              <option value="ICU">ICU</option>
+              <option value="ER">ห้องฉุกเฉิน (ER)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="text-xs text-slate-500 block mb-0.5">ความรุนแรง / ผลลัพธ์</label>
+            <select id="filterOutcome" class="border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500">
+              <option value="all">ทั้งหมด (All Cases)</option>
+              <option value="shock">เฉพาะ Septic Shock</option>
+              <option value="dead">เฉพาะ เสียชีวิต (Dead)</option>
+              <option value="alive">เฉพาะ รอดชีวิต (Alive)</option>
+            </select>
+          </div>
+
+          <button onclick="SepsisApp.exportToCsv()" class="mt-4 sm:mt-0 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-sm transition">
+            <i class="fa-solid fa-file-excel"></i> <span>ส่งออก Excel (CSV)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Summary Cards (Audit & Quality Standards) -->
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <!-- Card 1: Total Sepsis -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500 mb-1 flex items-center justify-between">
+            <span>ผู้ป่วย Sepsis ทั้งหมด</span>
+            <i class="fa-solid fa-hospital-user text-teal-600"></i>
+          </div>
+          <div id="kpiTotalCases" class="text-2xl font-bold text-slate-800">0</div>
+          <div class="text-xs text-slate-500 mt-1">ผู้ป่วยใน รพ.เมตตาฯ</div>
+        </div>
+
+        <!-- Card 2: Septic Shock -->
+        <div class="bg-white p-4 rounded-xl border border-red-100 shadow-sm bg-gradient-to-br from-white to-red-50/40">
+          <div class="text-xs font-medium text-red-600 mb-1 flex items-center justify-between">
+            <span>Septic Shock</span>
+            <i class="fa-solid fa-triangle-exclamation text-red-500"></i>
+          </div>
+          <div id="kpiShockCount" class="text-2xl font-bold text-red-600">0</div>
+          <div class="text-xs text-red-500 mt-1">ได้รับ Inotropic drug</div>
+        </div>
+
+        <!-- Card 3: Mortality Rate -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500 mb-1 flex items-center justify-between">
+            <span>อัตราตาย (Mortality)</span>
+            <i class="fa-solid fa-heart-crack text-red-500"></i>
+          </div>
+          <div id="kpiMortalityRate" class="text-2xl font-bold text-slate-800">0%</div>
+          <div id="kpiDeadCount" class="text-xs text-slate-500 mt-1">0 / 0 ราย</div>
+        </div>
+
+        <!-- Card 4: 1-Hour Bundle Compliance -->
+        <div class="bg-white p-4 rounded-xl border border-teal-200 shadow-sm bg-gradient-to-br from-white to-teal-50/50">
+          <div class="text-xs font-medium text-teal-700 mb-1 flex items-center justify-between">
+            <span>1-Hr Bundle ครบถ้วน</span>
+            <i class="fa-solid fa-clock-rotate-left text-teal-600"></i>
+          </div>
+          <div id="kpiBundleRate" class="text-2xl font-bold text-teal-700">0%</div>
+          <div class="text-xs text-teal-600 mt-1">เป้าหมาย &gt; 80%</div>
+        </div>
+
+        <!-- Card 5: H/C Before ATB -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500 mb-1 flex items-center justify-between">
+            <span>H/C ก่อนให้ ATB</span>
+            <i class="fa-solid fa-vial text-sky-600"></i>
+          </div>
+          <div id="kpiHcBeforeRate" class="text-2xl font-bold text-slate-800">0%</div>
+          <div class="text-xs text-slate-500 mt-1">เกณฑ์คุณภาพ HA</div>
+        </div>
+
+        <!-- Card 6: ATB within 60 mins -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500 mb-1 flex items-center justify-between">
+            <span>ATB ใน 1 ชั่วโมง</span>
+            <i class="fa-solid fa-capsules text-indigo-600"></i>
+          </div>
+          <div id="kpiAtb1hrRate" class="text-2xl font-bold text-slate-800">0%</div>
+          <div class="text-xs text-slate-500 mt-1">Time to ATB &le; 60m</div>
+        </div>
+      </div>
+
+      <!-- Charts Row 1: Monthly Trend & 1-Hour Bundle Breakdown -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Monthly Trend -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="font-bold text-slate-800 text-sm">แนวโน้มผู้ป่วยและอัตราตายรายเดือน (Monthly Sepsis Trend)</h3>
+              <p class="text-xs text-slate-500">จำนวนเคส Sepsis, Septic Shock และ % อัตราการเสียชีวิต</p>
+            </div>
+            <span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded font-medium">ภาพรวมรายเดือน</span>
+          </div>
+          <div class="h-64">
+            <canvas id="monthlyTrendChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Bundle Compliance Breakdown -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="font-bold text-slate-800 text-sm">ความครอบคลุมการดูแลตาม 1-Hour Sepsis Bundle (%)</h3>
+              <p class="text-xs text-slate-500">ตัวชี้วัดสำคัญของกระทรวงสาธารณสุข และการตรวจประเมินคุณภาพ (HA)</p>
+            </div>
+            <span class="text-xs bg-teal-50 text-teal-700 px-2 py-1 rounded font-medium">Compliance Rate</span>
+          </div>
+          <div class="h-64">
+            <canvas id="bundleComplianceChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Row 2: Source of Infection, Ward Distribution, Outcome -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Infection Source -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div class="mb-3">
+            <h3 class="font-bold text-slate-800 text-sm">แหล่งที่มาของการติดเชื้อ (Source)</h3>
+            <p class="text-xs text-slate-500">จำแนกตามระบบอวัยวะ (รวมโรคตา/Ocular)</p>
+          </div>
+          <div class="h-56">
+            <canvas id="infectionSourceChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Ward Distribution -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div class="mb-3">
+            <h3 class="font-bold text-slate-800 text-sm">สถิติแยกตามหอผู้ป่วย (Ward)</h3>
+            <p class="text-xs text-slate-500">การตรวจพบผู้ป่วยในแต่ละแผนก</p>
+          </div>
+          <div class="h-56">
+            <canvas id="wardDistributionChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Outcome Distribution -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div class="mb-3">
+            <h3 class="font-bold text-slate-800 text-sm">ผลลัพธ์การรักษา (Discharge Status)</h3>
+            <p class="text-xs text-slate-500">สัดส่วนการจำหน่ายและรอดชีวิต</p>
+          </div>
+          <div class="h-56">
+            <canvas id="outcomeChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 2: DIGITAL DATA RECORD FORM (แบบฟอร์มบันทึก) -->
+    <!-- ========================================== -->
+    <section id="formTab" class="hidden space-y-6">
+      <form id="sepsisForm" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        
+        <!-- Form Header Banner -->
+        <div class="bg-teal-700 text-white p-5 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs bg-teal-800 px-2.5 py-0.5 rounded-full font-mono">F/M-MED/002-XX</span>
+              <span class="text-xs bg-amber-400 text-amber-900 font-semibold px-2 py-0.5 rounded">ฉบับปรับปรุง พ.ศ. 2566</span>
+            </div>
+            <h2 class="text-xl font-bold mt-1.5">แบบฟอร์มเก็บข้อมูลผู้ป่วยที่มีภาวะ Severe sepsis/Septic shock</h2>
+            <p class="text-xs text-teal-200">โรงพยาบาลเมตตาประชารักษ์ (วัดไร่ขิง)</p>
+          </div>
+          <div class="text-right">
+            <button type="submit" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold shadow transition flex items-center gap-2 text-sm">
+              <i class="fa-solid fa-floppy-disk"></i> <span>บันทึกข้อมูล (Save)</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="p-6 space-y-8">
+          
+          <!-- ส่วนข้อมูลทั่วไปของผู้ป่วย (Patient Demographics & Admission) -->
+          <div>
+            <h3 class="form-section-title font-bold text-teal-800 text-base mb-4">ข้อมูลผู้ป่วยและการรับไว้รักษา</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label class="text-xs font-semibold text-slate-700 block mb-1">ชื่อ - นามสกุล <span class="text-red-500">*</span></label>
+                <input type="text" id="patientName" required placeholder="นาย/นาง/น.ส. ..." class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none">
+              </div>
+
+              <div>
+                <label class="text-xs font-semibold text-slate-700 block mb-1">HN <span class="text-red-500">*</span></label>
+                <input type="text" id="hn" required placeholder="เช่น 66012345" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none font-mono">
+              </div>
+
+              <div>
+                <label class="text-xs font-semibold text-slate-700 block mb-1">AN</label>
+                <input type="text" id="an" placeholder="เช่น 67000123" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none font-mono">
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="text-xs font-semibold text-slate-700 block mb-1">อายุ (ปี)</label>
+                  <input type="number" id="age" min="0" max="130" placeholder="ปี" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none">
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-slate-700 block mb-1">เพศ</label>
+                  <div class="flex items-center gap-3 pt-2 text-sm">
+                    <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="gender" value="ชาย" checked class="text-teal-600"> ชาย</label>
+                    <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="gender" value="หญิง" class="text-teal-600"> หญิง</label>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label class="text-xs font-semibold text-slate-700 block mb-1">หอผู้ป่วย <span class="text-red-500">*</span></label>
+                <select id="ward" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none bg-white">
+                  <option value="หอผู้ป่วยอายุรกรรมชาย">หอผู้ป่วยอายุรกรรมชาย</option>
+                  <option value="หอผู้ป่วยอายุรกรรมหญิง">หอผู้ป่วยอายุรกรรมหญิง</option>
+                  <option value="หอผู้ป่วยศัลยกรรม">หอผู้ป่วยศัลยกรรม</option>
+                  <option value="หอผู้ป่วยจักษุ 1">หอผู้ป่วยจักษุ 1</option>
+                  <option value="หอผู้ป่วยจักษุ 2">หอผู้ป่วยจักษุ 2</option>
+                  <option value="หอผู้ป่วยจักษุ 3">หอผู้ป่วยจักษุ 3</option>
+                  <option value="หอผู้ป่วยจักษุ 4">หอผู้ป่วยจักษุ 4</option>
+                  <option value="ICU">ICU</option>
+                  <option value="ER">ห้องฉุกเฉิน (ER)</option>
+                  <option value="อื่นๆ">อื่นๆ</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="text-xs font-semibold text-slate-700 block mb-1">วันที่ Admit และเวลา</label>
+                <input type="datetime-local" id="admitDateTime" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none">
+              </div>
+
+              <div class="md:col-span-2">
+                <label class="text-xs font-semibold text-red-700 block mb-1">วันที่และเวลาที่วินิจฉัย Sepsis (จุดเริ่มจับเวลา 1-Hour Bundle) <span class="text-red-500">*</span></label>
+                <input type="datetime-local" id="diagnosisDateTime" required class="w-full border-2 border-red-300 bg-red-50/30 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-red-500 focus:outline-none">
+              </div>
+            </div>
+          </div>
+
+          <hr class="border-slate-200">
+
+          <!-- 1. Early Detection ภายใน 1 ชั่วโมง (แพทย์เป็นผู้กรอก) -->
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="form-section-title font-bold text-teal-800 text-base">1. Early detection ภายใน 1 ชั่วโมง <span class="text-xs text-slate-500 font-normal">(แพทย์เป็นผู้กรอก)</span></h3>
+            </div>
+
+            <!-- SIRS, qSOFA & MEWS Columns -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+              
+              <!-- Card SIRS -->
+              <div class="border border-slate-200 rounded-xl p-4 bg-slate-50">
+                <div class="flex items-center justify-between mb-2">
+                  <h4 class="font-bold text-sm text-slate-800">SIRS Criteria</h4>
+                  <span id="sirsLiveBadge" class="badge bg-slate-200 text-slate-600">0/4 ข้อ</span>
+                </div>
+                <p class="text-xs text-slate-500 mb-3">(เกณฑ์วินิจฉัย: &ge; 2 จาก 4 ข้อ)</p>
+                <div class="space-y-2 text-xs">
+                  <label class="flex items-start gap-2 cursor-pointer p-1 rounded hover:bg-slate-100">
+                    <input type="checkbox" id="sirs_wbc" class="mt-0.5 rounded text-teal-600">
+                    <span>WBC &lt; 4000 or &gt; 12000 or &gt; 10% band form</span>
+                  </label>
+                  <label class="flex items-start gap-2 cursor-pointer p-1 rounded hover:bg-slate-100">
+                    <input type="checkbox" id="sirs_bt" class="mt-0.5 rounded text-teal-600">
+                    <span>BT &lt; 36 or &gt; 38 &deg;C</span>
+                  </label>
+                  <label class="flex items-start gap-2 cursor-pointer p-1 rounded hover:bg-slate-100">
+                    <input type="checkbox" id="sirs_hr" class="mt-0.5 rounded text-teal-600">
+                    <span>HR &gt; 90 beats/minute</span>
+                  </label>
+                  <label class="flex items-start gap-2 cursor-pointer p-1 rounded hover:bg-slate-100">
+                    <input type="checkbox" id="sirs_rr" class="mt-0.5 rounded text-teal-600">
+                    <span>RR &gt; 20 /min or pCO2 &lt; 32 mmHg</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Card qSOFA -->
+              <div class="border border-slate-200 rounded-xl p-4 bg-slate-50">
+                <div class="flex items-center justify-between mb-2">
+                  <h4 class="font-bold text-sm text-slate-800">qSOFA Score</h4>
+                  <span id="qsofaLiveBadge" class="badge bg-slate-200 text-slate-600">0/3 ข้อ</span>
+                </div>
+                <p class="text-xs text-slate-500 mb-3">(เกณฑ์วินิจฉัย: &ge; 2 จาก 3 ข้อ)</p>
+                <div class="space-y-2 text-xs">
+                  <label class="flex items-start gap-2 cursor-pointer p-1 rounded hover:bg-slate-100">
+                    <input type="checkbox" id="qsofa_rr" class="mt-0.5 rounded text-teal-600">
+                    <span>RR &ge; 22 breath/minute</span>
+                  </label>
+                  <label class="flex items-start gap-2 cursor-pointer p-1 rounded hover:bg-slate-100">
+                    <input type="checkbox" id="qsofa_sbp" class="mt-0.5 rounded text-teal-600">
+                    <span>SBP &le; 100 mmHg</span>
+                  </label>
+                  <label class="flex items-start gap-2 cursor-pointer p-1 rounded hover:bg-slate-100">
+                    <input type="checkbox" id="qsofa_gcs" class="mt-0.5 rounded text-teal-600">
+                    <span>GCS &le; 13 (Altered mental status)</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Card MEWS Quick Summary -->
+              <div class="border border-slate-200 rounded-xl p-4 bg-slate-50 flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <h4 class="font-bold text-sm text-slate-800">MEWS Score</h4>
+                    <span id="mewsScoreBadge" class="badge bg-emerald-100 text-emerald-700">ปกติ (&lt;4)</span>
+                  </div>
+                  <p class="text-xs text-slate-500 mb-2">เกณฑ์ข้อบ่งชี้ &ge; 4 คะแนน</p>
+                  <div class="text-3xl font-extrabold text-teal-800 my-2 text-center">
+                    <span id="mewsTotalScore">0</span> <span class="text-xs text-slate-400 font-normal">คะแนน</span>
+                  </div>
+                  <input type="hidden" id="mewsScoreInput" value="0">
+                </div>
+                <p class="text-[11px] text-slate-500 text-center">กดเลือกค่าสัญญาณชีพในตาราง MEWS ด้านล่าง ระบบจะคำนวณคะแนนรวมให้อัตโนมัติ</p>
+              </div>
+
+            </div>
+
+            <!-- MEWS Interactive Calculator Table (ตาราง MEWS คำนวณอัตโนมัติ) -->
+            <div class="border border-slate-200 rounded-xl p-4 bg-white shadow-sm overflow-x-auto">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-bold text-teal-800 flex items-center gap-1.5">
+                  <i class="fa-solid fa-calculator text-teal-600"></i> ตารางคำนวณ MEWS Score (Modified Early Warning Score)
+                </span>
+                <span class="text-[11px] text-slate-400">คลิกที่ช่องเพื่อเลือกคะแนนของผู้ป่วย</span>
+              </div>
+
+              <div class="min-w-[640px] space-y-2 text-xs">
+                <!-- Row 1: RR -->
+                <div class="grid grid-cols-7 gap-1 items-center">
+                  <span class="font-semibold text-slate-700">Resp. Rate:</span>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="rr" data-score="3">&lt; 7 (3)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center active-0" data-param="rr" data-score="0">9-20 (0)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="rr" data-score="1">21-30 (1)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="rr" data-score="2">31-35 (2)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="rr" data-score="3">&ge; 35 (3)</button>
+                  <div></div>
+                </div>
+
+                <!-- Row 2: SpO2 -->
+                <div class="grid grid-cols-7 gap-1 items-center">
+                  <span class="font-semibold text-slate-700">SpO2 (%):</span>
+                  <button type="button" class="mews-btn border p-1 rounded text-center active-0" data-param="spo2" data-score="0">&ge; 93 (0)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="spo2" data-score="1">90-92 (1)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="spo2" data-score="2">85-89 (2)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="spo2" data-score="3">&lt; 85 (3)</button>
+                  <div></div>
+                  <div></div>
+                </div>
+
+                <!-- Row 3: Temp -->
+                <div class="grid grid-cols-7 gap-1 items-center">
+                  <span class="font-semibold text-slate-700">Temp (&deg;C):</span>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="bt" data-score="3">&lt; 34 (3)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="bt" data-score="2">34-34.9 (2)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="bt" data-score="1">35-35.9 (1)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center active-0" data-param="bt" data-score="0">36-37.9 (0)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="bt" data-score="1">38-38.4 (1)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="bt" data-score="2">&ge; 38.5 (2)</button>
+                </div>
+
+                <!-- Row 4: SBP -->
+                <div class="grid grid-cols-7 gap-1 items-center">
+                  <span class="font-semibold text-slate-700">Systolic BP:</span>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="sbp" data-score="3">&lt; 70 (3)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="sbp" data-score="2">70-79 (2)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="sbp" data-score="1">80-99 (1)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center active-0" data-param="sbp" data-score="0">101-199 (0)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="sbp" data-score="3">&ge; 199 (3)</button>
+                  <div></div>
+                </div>
+
+                <!-- Row 5: HR -->
+                <div class="grid grid-cols-7 gap-1 items-center">
+                  <span class="font-semibold text-slate-700">Heart Rate:</span>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="hr" data-score="3">&lt; 30 (3)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="hr" data-score="2">30-39 (2)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="hr" data-score="1">40-49 (1)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center active-0" data-param="hr" data-score="0">50-99 (0)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="hr" data-score="1">100-109 (1)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="hr" data-score="2">110-129 (2)</button>
+                </div>
+
+                <!-- Row 6: AVPU -->
+                <div class="grid grid-cols-7 gap-1 items-center">
+                  <span class="font-semibold text-slate-700">AVPU:</span>
+                  <button type="button" class="mews-btn border p-1 rounded text-center active-0" data-param="avpu" data-score="0">Alert (0)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="avpu" data-score="1">Verbal (1)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="avpu" data-score="2">Pain (2)</button>
+                  <button type="button" class="mews-btn border p-1 rounded text-center" data-param="avpu" data-score="3">Unresp. (3)</button>
+                  <div></div>
+                  <div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Source of Infection -->
+            <div>
+              <label class="text-xs font-semibold text-slate-700 block mb-1">Source of Infection (แหล่งที่มาของการติดเชื้อ)</label>
+              <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                <select id="sourceOfInfectionSelect" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-1 focus:ring-teal-500">
+                  <option value="Respiratory tract">Respiratory tract (ทางเดินหายใจ)</option>
+                  <option value="Urinary tract">Urinary tract (ทางเดินปัสสาวะ)</option>
+                  <option value="GI tract">GI tract (ทางเดินอาหาร)</option>
+                  <option value="Ocular">Ocular (ตาและจักษุ)</option>
+                  <option value="Skin and soft tissue">Skin and soft tissue (ผิวหนัง/เนื้อเยื่อ)</option>
+                  <option value="CNS">CNS (ระบบประสาทส่วนกลาง)</option>
+                  <option value="อื่นๆ">อื่นๆ</option>
+                </select>
+
+                <div id="sourceOtherContainer" class="sm:col-span-1 md:col-span-3">
+                  <input type="text" id="sourceOfInfectionDetail" placeholder="ระบุตำแหน่ง หรือรายละเอียดเพิ่มเติม เช่น Pneumonia, Cellulitis ขาซ้าย" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-teal-500">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <hr class="border-slate-200">
+
+          <!-- 2. Early Treatment ภายใน 1 ชั่วโมง (พยาบาลเป็นผู้กรอก) -->
+          <div class="space-y-4">
+            <h3 class="form-section-title font-bold text-teal-800 text-base">2. Early treatment ภายใน 1 ชั่วโมง <span class="text-xs text-slate-500 font-normal">(พยาบาลเป็นผู้กรอก)</span></h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+              
+              <!-- Hemoculture (H/C) -->
+              <div class="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
+                <div class="flex items-center justify-between">
+                  <h4 class="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                    <i class="fa-solid fa-vial text-sky-600"></i> Hemoculture (H/C x 2 ขวด)
+                  </h4>
+                  <label class="text-xs text-teal-700 font-medium flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" id="hcWithin1HrCheck" checked class="rounded text-teal-600"> ใน 1 ชม.
+                  </label>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">ขวดที่ 1 Site</label>
+                    <input type="text" id="hcSite1" placeholder="เช่น Lt. arm" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">เวลาที่เจาะขวดที่ 1</label>
+                    <input type="time" id="hcTime1" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">ขวดที่ 2 Site (แยก site)</label>
+                    <input type="text" id="hcSite2" placeholder="เช่น Rt. arm" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">เวลาที่เจาะขวดที่ 2 (ห่าง 30น.)</label>
+                    <input type="time" id="hcTime2" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                </div>
+
+                <div class="pt-1">
+                  <label class="flex items-center gap-2 text-xs font-semibold text-teal-800 bg-teal-50 p-2 rounded border border-teal-200 cursor-pointer">
+                    <input type="checkbox" id="hcBeforeAtbCheck" checked class="rounded text-teal-600">
+                    <span>เจาะ Hemoculture ก่อนเริ่มให้ยา Antibiotic (ตัวชี้วัดสำคัญ)</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Antibiotic (ATB) -->
+              <div class="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
+                <div class="flex items-center justify-between">
+                  <h4 class="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                    <i class="fa-solid fa-capsules text-indigo-600"></i> Antibiotic (ยาปฏิชีวนะ)
+                  </h4>
+                  <span id="atbTimingLiveBadge" class="text-xs"></span>
+                </div>
+
+                <!-- ยาชนิดที่ 1 -->
+                <div class="grid grid-cols-3 gap-2 text-xs">
+                  <div class="col-span-1">
+                    <label class="font-semibold text-slate-600 block mb-1">ชื่อยาชนิดที่ 1</label>
+                    <input type="text" id="atb1Name" placeholder="เช่น Ceftriaxone" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">Dose</label>
+                    <input type="text" id="atb1Dose" placeholder="เช่น 2 g IV" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">เวลาที่เริ่มให้ยา</label>
+                    <input type="time" id="atb1Time" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                </div>
+
+                <!-- ยาชนิดที่ 2 (ถ้ามี) -->
+                <div class="grid grid-cols-3 gap-2 text-xs">
+                  <div class="col-span-1">
+                    <label class="font-semibold text-slate-600 block mb-1">ชื่อยาชนิดที่ 2 (ถ้ามี)</label>
+                    <input type="text" id="atb2Name" placeholder="เช่น Azithromycin" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">Dose</label>
+                    <input type="text" id="atb2Dose" placeholder="เช่น 500 mg IV" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">เวลาที่เริ่มให้ยา</label>
+                    <input type="time" id="atb2Time" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <hr class="border-slate-200">
+
+          <!-- 3. Hemodynamic resuscitation (พยาบาลเป็นผู้กรอก) -->
+          <div class="space-y-4">
+            <h3 class="form-section-title font-bold text-teal-800 text-base">3. Hemodynamic resuscitation <span class="text-xs text-slate-500 font-normal">(พยาบาลเป็นผู้กรอก)</span></h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+              
+              <!-- IV Fluid -->
+              <div class="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
+                <div class="flex items-center justify-between">
+                  <label class="flex items-center gap-2 cursor-pointer font-bold text-sm text-slate-800">
+                    <input type="checkbox" id="ivFluidGivenCheckbox" checked class="rounded text-teal-600">
+                    <span>IV Fluid Resuscitation</span>
+                  </label>
+                  <span class="text-xs text-slate-500">30 cc/kg load in 1 hr</span>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">ชนิดสารน้ำ</label>
+                    <select id="ivFluidType" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                      <option value="Acetar">Acetar</option>
+                      <option value="RLS">RLS</option>
+                      <option value="NSS">NSS</option>
+                      <option value="อื่นๆ">อื่นๆ</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">Rate / ปริมาณ</label>
+                    <input type="text" id="ivFluidRate" placeholder="เช่น 1000 ml stat" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">เวลาที่เริ่มให้ IV</label>
+                    <input type="time" id="ivFluidTime" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Inotropic Drugs (Septic Shock) -->
+              <div class="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
+                <div class="flex items-center justify-between">
+                  <label class="flex items-center gap-2 cursor-pointer font-bold text-sm text-red-700">
+                    <input type="checkbox" id="inotropicGivenCheckbox" class="rounded text-red-600">
+                    <span>Inotropic drug (ภาวะ Septic shock)</span>
+                  </label>
+                  <span class="text-xs text-slate-500">เมื่อ MAP &lt; 65</span>
+                </div>
+
+                <div id="inotropicDetailsContainer" class="hidden grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">ชนิดยา</label>
+                    <select id="inotropicType" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                      <option value="Levophed">Levophed (Norepinephrine)</option>
+                      <option value="Dopamine">Dopamine</option>
+                      <option value="Adrenaline">Adrenaline</option>
+                      <option value="Dobutamine">Dobutamine</option>
+                      <option value="อื่นๆ">อื่นๆ</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">Dose / Titrate</label>
+                    <input type="text" id="inotropicDose" placeholder="เช่น 0.1 mcg/kg/min" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                  <div>
+                    <label class="font-semibold text-slate-600 block mb-1">เวลาเริ่มให้</label>
+                    <input type="time" id="inotropicTime" class="w-full border border-slate-300 rounded p-1.5 text-xs bg-white">
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- อุปกรณ์และการดูแลเพิ่มเติม -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+              <div>
+                <label class="text-xs font-semibold text-slate-700 block mb-1">Oxygen Support (ระบุ)</label>
+                <input type="text" id="oxygenSupport" placeholder="เช่น Cannula 3 LPM, Mask with bag, ETT" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white">
+              </div>
+              <div class="flex items-center gap-4 pt-5 text-sm">
+                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="hasCentralLine" class="rounded text-teal-600"> มี Central line</label>
+                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="hasFoley" checked class="rounded text-teal-600"> Retain Foley's cath</label>
+              </div>
+            </div>
+          </div>
+
+          <hr class="border-slate-200">
+
+          <!-- 4. Sepsis checklist (แพทย์เป็นผู้กรอก) -->
+          <div class="space-y-4">
+            <h3 class="form-section-title font-bold text-teal-800 text-base">4. Sepsis checklist <span class="text-xs text-slate-500 font-normal">(แพทย์เป็นผู้กรอก)</span></h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs bg-teal-50/50 p-4 rounded-xl border border-teal-100">
+              <label class="flex items-start gap-2 cursor-pointer p-1.5 rounded hover:bg-teal-50">
+                <input type="checkbox" id="chk_hc" value="hc" checked class="mt-0.5 rounded text-teal-600">
+                <span>เจาะ Hemoculture x 2 specimen (แยก Site ที่เจาะ) ห่างกันขวดละ 30 นาที + เปิดเส้น IV peripheral line</span>
+              </label>
+
+              <label class="flex items-start gap-2 cursor-pointer p-1.5 rounded hover:bg-teal-50">
+                <input type="checkbox" id="chk_culture" value="culture" checked class="mt-0.5 rounded text-teal-600">
+                <span>UA, U/C, Sputum G/S, C/S หรือตาม Source of infection</span>
+              </label>
+
+              <label class="flex items-start gap-2 cursor-pointer p-1.5 rounded hover:bg-teal-50">
+                <input type="checkbox" id="chk_lactate" value="lactate" checked class="mt-0.5 rounded text-teal-600">
+                <span>ส่งตรวจ Serum Lactate</span>
+              </label>
+
+              <label class="flex items-start gap-2 cursor-pointer p-1.5 rounded hover:bg-teal-50">
+                <input type="checkbox" id="chk_atb" value="atb" checked class="mt-0.5 rounded text-teal-600">
+                <span>ให้ IV Antibiotic ใน 1 ชั่วโมงแรกหลังจากวินิจฉัย Sepsis</span>
+              </label>
+
+              <label class="flex items-start gap-2 cursor-pointer p-1.5 rounded hover:bg-teal-50">
+                <input type="checkbox" id="chk_fluid" value="ivFluid" checked class="mt-0.5 rounded text-teal-600">
+                <span>ให้ IV balance crystalloid (RLS, Acetar) or NSS (30cc/kg ถ้าไม่มีโรคประจำตัว)</span>
+              </label>
+
+              <label class="flex items-start gap-2 cursor-pointer p-1.5 rounded hover:bg-teal-50">
+                <input type="checkbox" id="chk_foley" value="foley" checked class="mt-0.5 rounded text-teal-600">
+                <span>Retain foley's catheter และ record Intake / Output (I/O)</span>
+              </label>
+
+              <label class="flex items-start gap-2 cursor-pointer p-1.5 rounded hover:bg-teal-50">
+                <input type="checkbox" id="chk_map" value="targetMap" checked class="mt-0.5 rounded text-teal-600">
+                <span>Keep target MAP &ge; 65 mmHg</span>
+              </label>
+            </div>
+          </div>
+
+          <hr class="border-slate-200">
+
+          <!-- 5. Discharge status (ผลลัพธ์การรักษา) -->
+          <div class="space-y-4">
+            <h3 class="form-section-title font-bold text-teal-800 text-base">5. Discharge status <span class="text-xs text-slate-500 font-normal">(สถานะการจำหน่าย)</span></h3>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label class="text-xs font-semibold text-slate-700 block mb-1">วันที่ Discharge</label>
+                <input type="date" id="dischargeDate" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+
+              <div>
+                <label class="text-xs font-semibold text-slate-700 block mb-1">สถานะจำหน่าย</label>
+                <select id="dischargeStatus" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-1 focus:ring-teal-500">
+                  <option value="Complete recovery">Complete recovery (หายเป็นปกติ)</option>
+                  <option value="Improve">Improve (อาการดีขึ้น)</option>
+                  <option value="ย้าย ICU">ย้าย ICU</option>
+                  <option value="Refer">Refer (ส่งต่อไป รพ. อื่น)</option>
+                  <option value="Dead">Dead (เสียชีวิต)</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="text-xs font-semibold text-slate-700 block mb-1">กรณี Refer ระบุ รพ.ปลายทาง</label>
+                <input type="text" id="referHospital" placeholder="ชื่อโรงพยาบาลที่ส่งต่อ" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+
+              <div>
+                <label class="text-xs font-semibold text-slate-700 block mb-1">ชื่อผู้บันทึกข้อมูล (พว./นพ.)</label>
+                <input type="text" id="recordedBy" placeholder="เช่น พว. สุดาพร (RN)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+
+              <div class="sm:col-span-2 md:col-span-4">
+                <label class="text-xs font-semibold text-slate-700 block mb-1">หมายเหตุเพิ่มเติม</label>
+                <input type="text" id="notes" placeholder="หมายเหตุทางคลินิก หรือบันทึกเพิ่มเติม" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Action Buttons -->
+          <div class="pt-4 flex justify-end gap-3">
+            <button type="button" onclick="SepsisApp.switchTab('dashboard')" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-sm font-semibold transition">
+              ยกเลิก
+            </button>
+            <button type="submit" class="px-6 py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-sm font-bold shadow-md transition flex items-center gap-2">
+              <i class="fa-solid fa-check"></i> <span>บันทึกและส่งข้อมูล</span>
+            </button>
+          </div>
+
+        </div>
+      </form>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 3: PATIENT REGISTRY & CASE LOOKUP (ทะเบียนผู้ป่วย) -->
+    <!-- ========================================== -->
+    <section id="registryTab" class="hidden space-y-4">
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 class="text-base font-bold text-slate-800">ทะเบียนประวัติผู้ป่วย Sepsis (Case Registry)</h2>
+          <p class="text-xs text-slate-500">ค้นหา ดูรายละเอียดเคสย้อนหลัง พิมพ์รายงานชาร์ตผู้ป่วย</p>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div class="relative">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+            <input type="text" id="searchRegistryInput" placeholder="ค้นหา HN, AN, ชื่อ หรือวอร์ด..." class="pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs w-64 focus:outline-none focus:ring-1 focus:ring-teal-500">
+          </div>
+
+          <button onclick="SepsisApp.exportToCsv()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-file-csv"></i> <span>Export CSV</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Table Container -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+              <th class="px-4 py-3">HN</th>
+              <th class="px-4 py-3">ชื่อ - สกุล</th>
+              <th class="px-4 py-3">อายุ / เพศ</th>
+              <th class="px-4 py-3">หอผู้ป่วย</th>
+              <th class="px-4 py-3">วันเวลาตรวจพบ</th>
+              <th class="px-4 py-3">ภาวะ</th>
+              <th class="px-4 py-3">1-Hr Bundle</th>
+              <th class="px-4 py-3">ผลลัพธ์</th>
+              <th class="px-4 py-3 text-right">การจัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="registryTableBody">
+            <!-- Rendered by SepsisApp.renderPatientRegistry() -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 4: SETTINGS & GOOGLE SHEETS SYNC (ตั้งค่าระบบ) -->
+    <!-- ========================================== -->
+    <section id="settingsTab" class="hidden space-y-6">
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+        <div>
+          <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <i class="fa-solid fa-cloud-arrow-up text-teal-600"></i> การเชื่อมต่อ Google Sheet Backend
+          </h2>
+          <p class="text-xs text-slate-500">ตั้งค่าการซิงค์ข้อมูลกับ Google Sheets ผ่าน Google Apps Script Web App</p>
+        </div>
+
+        <div class="bg-teal-50 border border-teal-200 p-4 rounded-xl space-y-2 text-xs text-teal-900">
+          <div class="font-bold flex items-center gap-1.5 text-teal-800">
+            <i class="fa-solid fa-circle-info"></i> เชื่อมต่อกับ Google Sheet ของคุณใน 3 ขั้นตอนง่ายๆ:
+          </div>
+          <ol class="list-decimal list-inside space-y-1 pl-1">
+            <li>เปิด Google Sheet ของท่าน (เช่น ลิงก์ที่เคยใช้เก็บข้อมูล)</li>
+            <li>ไปที่เมนู <strong>ส่วนขยาย (Extensions) &gt; Apps Script</strong> แล้วนำโค้ดในโฟลเดอร์ <code class="bg-teal-100 px-1 py-0.5 rounded font-mono">google-apps-script/Code.gs</code> ไปวาง</li>
+            <li>กด <strong>Deploy (การทำให้ใช้งานได้) &gt; New deployment (รายการใหม่) &gt; Web app (เว็บแอป)</strong> โดยตั้งค่าสิทธิ์เข้าถึงเป็น <strong>"Everyone (ทุกคน)"</strong> แล้วคัดลอก URL มาวางในช่องด้านล่าง</li>
+          </ol>
+        </div>
+
+        <!-- Google Apps Script URL Input -->
+        <div class="space-y-2">
+          <label class="text-xs font-semibold text-slate-700 block">Google Apps Script Web App URL</label>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/AKfycb.../exec" class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono focus:ring-1 focus:ring-teal-500 focus:outline-none">
+            <button type="button" onclick="SepsisApp.saveGoogleSettings()" class="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-semibold shadow transition whitespace-nowrap">
+              <i class="fa-solid fa-floppy-disk mr-1"></i> บันทึก &amp; ทดสอบเชื่อมต่อ
+            </button>
+          </div>
+          <!-- Live Diagnostic Feedback Box -->
+          <div id="gasDiagnosticBox" class="mt-2 text-xs p-3 rounded-lg bg-slate-50 border border-slate-200">
+            <span class="text-slate-500"><i class="fa-solid fa-circle-question mr-1"></i> นำ Web App URL ที่ได้จากปุ่ม Deploy มาวางในช่องด้านบนแล้วกด "บันทึก &amp; ทดสอบเชื่อมต่อ"</span>
+          </div>
+        </div>
+
+        <!-- Action tools -->
+        <div class="pt-4 border-t border-slate-200 flex flex-wrap items-center gap-3">
+          <button id="btnSyncAll" type="button" onclick="SepsisApp.syncAllToGoogleSheet()" class="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow transition">
+            <i class="fa-solid fa-arrows-rotate"></i> <span>ซิงค์ข้อมูลที่มีทั้งหมดเข้า Google Sheet ทันที</span>
+          </button>
+
+          <button type="button" onclick="SepsisApp.exportToCsv()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-slate-300 transition">
+            <i class="fa-solid fa-download"></i> <span>สำรองข้อมูลเป็นไฟล์ Excel (CSV)</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Patient Detail & Print Modal -->
+  <div id="patientDetailModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 modal-container">
+    <div class="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl modal-content">
+      <div id="patientDetailContent">
+        <!-- Rendered dynamically by SepsisApp.viewRecordModal -->
+      </div>
+      <div class="mt-6 flex justify-end gap-2 border-t pt-4 no-print">
+        <button onclick="window.print()" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow">
+          <i class="fa-solid fa-print"></i> <span>พิมพ์เอกสาร F/M-MED/002-XX</span>
+        </button>
+        <button onclick="SepsisApp.closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold">
+          ปิดหน้าต่าง
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Alert -->
+  <div id="toast" class="hidden"></div>
+
+  <!-- Footer -->
+  <footer class="bg-slate-800 text-slate-400 text-xs py-4 border-t border-slate-700 mt-auto no-print">
+    <div class="max-w-7xl mx-auto px-4 text-center space-y-1">
+      <p>ระบบบันทึกและติดตามตัวชี้วัด Sepsis / Septic Shock • คณะกรรมการพัฒนาระบบบริการสุขภาพ โรงพยาบาลเมตตาประชารักษ์ (วัดไร่ขิง)</p>
+      <p class="text-slate-500">พัฒนาขึ้นเพื่อรองรับการตรวจประเมินคุณภาพ (HA), Service Plan Sepsis และการรายงานผลลัพธ์ทางคลินิกแบบเรียลไทม์</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/google-sheet-sync.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
